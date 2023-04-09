@@ -1,4 +1,4 @@
-Require Import Arith Bool List.
+Require Import Arith Bool List Lia.
 Open Scope list_scope.
 Parameter TODO : forall {t:Type}, t.
 
@@ -86,6 +86,28 @@ Module CritbitTree (params : CritbitTreeParams).
         | Some d => Node (insert' n ik iv d)
         end
     end.
+  
+  Theorem apply_empty :
+    forall sk, lookup Empty sk = None.
+  Proof.
+    reflexivity.
+  Qed.
+
+  Theorem update_eq :
+    forall t ik iv, lookup (insert t ik iv) ik = Some iv.
+  Proof.
+    induction t; intros; simpl.
+    - destruct keq; easy.
+    - admit.
+  Admitted.
+
+  Theorem update_neq :
+    forall t ik iv k, ik <> k -> lookup (insert t ik iv) k = lookup t k.
+  Proof.
+    induction t; intros; simpl.
+    - destruct keq; easy.
+    - admit.
+  Admitted.
 
 End CritbitTree.
 
@@ -131,6 +153,26 @@ Module Examples.
   Module CT := CritbitTree BitstringCritbitTreeParams.
   Import CT.
 
+  Ltac start :=
+    repeat (let E := fresh "E" in
+      (match goal with
+      | [ |- context[match ?X with _ => _ end]] => destruct X eqn:?E
+      end; inversion E; subst; clear E)).
+  
+  Ltac simp_if :=
+    let E := fresh "E" in
+      (match goal with
+      | [ |- context[if ?X then _ else _]] => destruct X eqn:?E
+      end; try discriminate; clear E).
+
+  Ltac step f :=
+    progress (cbv delta [f];
+      cbv delta [f];
+      cbv fix;
+      fold f;
+      cbv beta iota;
+      repeat simp_if).
+  
   Example ct0 := Empty.
   Goal lookup ct0 nil = None. Proof. reflexivity. Qed.
 
@@ -238,7 +280,13 @@ Module Examples.
       (Internal 2
         (Leaf l10001 5)
         (Leaf l10101 3))).
-  Proof. reflexivity. Qed.
+  Proof.
+    unfold ct3_5, insert.
+    start.
+    step insert'.
+    step insert'.
+    reflexivity.
+  Qed.
 
   Example ct3_6 := insert ct3_5 l00110 6.
   Goal ct3_6 = Node
@@ -255,6 +303,14 @@ Module Examples.
       (Internal 2
         (Leaf l10001 5)
         (Leaf l10101 3))).
-  Proof. reflexivity. Qed.
+  Proof.
+    unfold ct3_6, insert.
+    start.
+    step insert'.
+    step insert'.
+    step insert'.
+    step insert'.
+    reflexivity.
+  Qed.
 
 End Examples.
