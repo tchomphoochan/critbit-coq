@@ -1,27 +1,47 @@
 Require Import Arith Bool List Lia.
-Open Scope list_scope.
+Import ListNotations.
 Parameter TODO : forall {t:Type}, t.
 
-Infix "::" := cons.
-Notation " [ ] " := nil (format "[ ]") : list_scope.
-Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
-Notation " [ x ; y ; .. ; z ] " := (cons x (cons y .. (cons z nil) ..)) : list_scope.
+Definition partial_map (K V : Type) := K -> (option V).
+Parameter map_singleton : forall {K V : Type} (k : K) (v : V), partial_map K V.
+Parameter map_empty : forall {K V : Type}, partial_map K V.
+Parameter map_union : forall {K V : Type}, partial_map K V -> partial_map K V -> partial_map K V.
 
 Infix "<=?" := le_lt_dec.
 
-Module Type CritbitTreeParams.
-  Parameter (K : Type) (V : Type).
-  Parameter ith : K -> nat -> bool.
-  Parameter keq : forall (k1 k2 : K), {k1 = k2} + {k1 <> k2}.
-  Parameter diff : forall (k1 k2 : K), option nat.
-End CritbitTreeParams.
+Module CritbitTree.
+  Definition bitstring := list bool.
+  Definition K := bitstring.
+  Definition V := nat.
 
-Module CritbitTree (params : CritbitTreeParams).
-  Definition K := params.K.
-  Definition V := params.V.
-  Definition ith := params.ith.
-  Definition keq := params.keq.
-  Definition diff := params.diff.
+  Definition ith (s: bitstring) (n: nat): bool :=
+    nth_default false s n.
+  Definition keq := @list_eq_dec bool bool_dec.
+  Fixpoint diff (s1 : bitstring) :=
+    match s1 with
+    | c1::s1 => fun s2 => match s2 with
+      | c2::s2 => 
+          if (eqb c1 c2)
+          then option_map S (diff s1 s2)
+          else Some 0
+      | nil =>
+          if (eqb c1 false)
+          then option_map S (diff s1 nil)
+          else Some 0
+      end
+    | nil => fix fs2 s2 := match s2 with
+      | c2::s2 => 
+          if (eqb false c2)
+          then option_map S (fs2 s2)
+          else Some 0
+      | nil => None
+      end
+    end.
+  Goal diff [] [false;true;false] = Some 1. Proof. reflexivity. Qed.
+  Goal diff [] [false] = None. Proof. reflexivity. Qed.
+  Goal diff [true;true] [true;true;true] = Some 2. Proof. reflexivity. Qed.
+  Goal diff [true;false;true] [true;true;true] = Some 1. Proof. reflexivity. Qed.
+  Goal diff [true] [true;false] = None. Proof. reflexivity. Qed.
 
   Inductive node : Type :=
   | Leaf (k: K) (v: V)
@@ -29,7 +49,18 @@ Module CritbitTree (params : CritbitTreeParams).
 
   Inductive tree : Type :=
   | Empty
-  | Node (n:node).
+  | Node (n: node).
+
+  Inductive ct : node -> K -> partial_map K V -> Prop :=
+  | ct_leaf : forall s v, ct (Leaf s v) s (map_singleton s v)
+  | ct_internal : forall tl tr s xl xr ml mr,
+      ct tl (s++[false]++xl) ml ->
+      ct tr (s++[true]++xr) mr ->
+      ct (Internal (length s) tl tr) s (map_union ml mr).
+
+  Inductive ct_top : tree -> partial_map K V -> Prop :=
+  | ct_top_empty : ct_top Empty map_empty
+  | ct_top_node : forall t m s, ct t s m -> ct_top (Node t) m.
 
   (* indices are always increasing as you go down the tree *)
 
@@ -51,8 +82,7 @@ Module CritbitTree (params : CritbitTreeParams).
     end.
   
   Definition empty : tree := Empty.
-  Definition singleton (ik: K) (iv: V) : tree :=
-    Node (Leaf ik iv).
+  Definition singleton (ik: K) (iv: V) : tree := Node (Leaf ik iv).
 
   (* d stands for diff index *)
   Fixpoint insert' (n: node) (ik: K) (iv: V) (d: nat) : node :=
@@ -111,46 +141,8 @@ Module CritbitTree (params : CritbitTreeParams).
 
 End CritbitTree.
 
-Module BitstringCritbitTreeParams <: CritbitTreeParams.
-  Definition bitstring := list bool.
-  Definition get_ith_bit (s: bitstring) (n: nat): bool :=
-    nth_default false s n.
-  Definition bitstring_eq_dec := @list_eq_dec bool bool_dec.
-  Fixpoint find_first_diff (s1 : bitstring) :=
-    match s1 with
-    | c1::s1 => fun s2 => match s2 with
-      | c2::s2 => 
-          if (eqb c1 c2)
-          then option_map S (find_first_diff s1 s2)
-          else Some 0
-      | nil =>
-          if (eqb c1 false)
-          then option_map S (find_first_diff s1 nil)
-          else Some 0
-      end
-    | nil => fix fs2 s2 := match s2 with
-      | c2::s2 => 
-          if (eqb false c2)
-          then option_map S (fs2 s2)
-          else Some 0
-      | nil => None
-      end
-    end.
-  Goal find_first_diff [] [false;true;false] = Some 1. Proof. reflexivity. Qed.
-  Goal find_first_diff [] [false] = None. Proof. reflexivity. Qed.
-  Goal find_first_diff [true;true] [true;true;true] = Some 2. Proof. reflexivity. Qed.
-  Goal find_first_diff [true;false;true] [true;true;true] = Some 1. Proof. reflexivity. Qed.
-  Goal find_first_diff [true] [true;false] = None. Proof. reflexivity. Qed.
-
-  Definition K := bitstring.
-  Definition V := nat.
-  Definition ith := get_ith_bit.
-  Definition keq := bitstring_eq_dec.
-  Definition diff := find_first_diff.
-End BitstringCritbitTreeParams.
-
 Module Examples.
-  Module CT := CritbitTree BitstringCritbitTreeParams.
+  Module CT := CritbitTree.
   Import CT.
 
   Ltac start :=
@@ -165,13 +157,22 @@ Module Examples.
       | [ |- context[if ?X then _ else _]] => destruct X eqn:?E
       end; try discriminate; clear E).
 
+  Ltac replace_with_simpl term :=
+    let P := fresh in
+    let H := fresh in
+    (eset (term = _) as P;
+    assert P as ?H;
+    [(unfold P, term;
+    simpl; reflexivity)
+    | rewrite H; clear P H]).
+
   Ltac step f :=
-    progress (cbv delta [f];
-      cbv delta [f];
-      cbv fix;
+    progress let F := fresh in
+      (cbv delta [f] fix;
       fold f;
-      cbv beta iota;
-      repeat simp_if).
+      remember f as F;
+      simpl;
+      subst F).
   
   Example ct0 := Empty.
   Goal lookup ct0 nil = None. Proof. reflexivity. Qed.
@@ -241,7 +242,17 @@ Module Examples.
       (Internal 4
         (Leaf l00100 2)
         (Leaf l00101 1))).
-  Proof. reflexivity. Qed.
+  Proof.
+    unfold ct3_2, insert.
+    remember insert' as G.
+    step find_best.
+    step find_best.
+    step find_best.
+    subst G.
+    step insert'.
+    step insert'.
+    reflexivity.
+  Qed.
 
   Example ct3_3 := insert ct3_2 l10101 3.
   Goal ct3_3 = Node
