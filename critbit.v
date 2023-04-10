@@ -247,17 +247,24 @@ Module Examples.
   Goal lookup ct2 [true;false;true] = None.
   Proof. reflexivity. Qed.
 
+  Example map3_0 := map_singleton l0001 0.
   Example ct3_0 := insert Empty l0001 0.
   Goal ct3_0 = Node (Leaf l0001 0).
   Proof. reflexivity. Qed.
+  Fact ct3_0_ok : ct_top ct3_0 map3_0.
+  Admitted.
 
+  Example map3_1 := map_add map3_0 l00101 1.
   Example ct3_1 := insert ct3_0 l00101 1.
   Goal ct3_1 = Node 
     (Internal 2
       (Leaf l0001 0)
       (Leaf l00101 1)).
   Proof. reflexivity. Qed.
+  Fact ct3_1_ok : ct_top ct3_1 map3_1.
+  Admitted.
 
+  Example map3_2 := map_add map3_1 l001 2.
   Example ct3_2 := insert ct3_1 l001 2.
   Goal ct3_2 = Node
     (Internal 2
@@ -276,7 +283,10 @@ Module Examples.
     step insert'.
     reflexivity.
   Qed.
+  Fact ct3_2_ok : ct_top ct3_2 map3_2.
+  Admitted.
 
+  Example map3_3 := map_add map3_2 l10101 3.
   Example ct3_3 := insert ct3_2 l10101 3.
   Goal ct3_3 = Node
     (Internal 0
@@ -287,7 +297,10 @@ Module Examples.
           (Leaf l00101 1)))
       (Leaf l10101 3)).
   Proof. reflexivity. Qed.
+  Fact ct3_3_ok : ct_top ct3_3 map3_3.
+  Admitted.
 
+  Example map3_4 := map_add map3_3 l00111 4.
   Example ct3_4 := insert ct3_3 l00111 4.
   Goal ct3_4 = Node
     (Internal 0
@@ -300,7 +313,10 @@ Module Examples.
           (Leaf l00111 4)))
       (Leaf l10101 3)).
   Proof. reflexivity. Qed.
+  Fact ct3_4_ok : ct_top ct3_4 map3_4.
+  Admitted.
 
+  Example map3_5 := map_add map3_4 l10001 5.
   Example ct3_5 := insert ct3_4 l10001 5.
   Goal ct3_5 = Node
     (Internal 0
@@ -321,7 +337,10 @@ Module Examples.
     step insert'.
     reflexivity.
   Qed.
+  Fact ct3_5_ok : ct_top ct3_5 map3_5.
+  Admitted.
 
+  Example map3_6 := map_add map3_5 l0011 6.
   Example ct3_6 := insert ct3_5 l0011 6.
   Goal ct3_6 = Node
     (Internal 0
@@ -346,5 +365,7 @@ Module Examples.
     step insert'.
     reflexivity.
   Qed.
+  Fact ct3_6_ok : ct_top ct3_6 map3_6.
+  Admitted.
 
 End Examples.
