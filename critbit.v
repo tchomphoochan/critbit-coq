@@ -1,26 +1,51 @@
-Require Import Arith Bool List Lia.
+Require Import Arith Bool Coq.Lists.List Coq.micromega.Lia.
+Require Import coqutil.Map.Interface.
+Require Import coqutil.Map.Properties.
+
 Import ListNotations.
 Parameter TODO : forall {t:Type}, t.
 
-Definition partial_map (K V : Type) := K -> (option V).
-Parameter map_singleton : forall {K V : Type} (k : K) (v : V), partial_map K V.
-Parameter map_add : forall {K V : Type} (m : partial_map K V) (k : K) (v : V), partial_map K V.
-Parameter map_empty : forall {K V : Type}, partial_map K V.
-Parameter map_union : forall {K V : Type}, partial_map K V -> partial_map K V -> partial_map K V.
-
+(* Bitstring definition *)
+Definition bitstring := list bool.
+Definition K := bitstring.
+Definition valid_key (s: bitstring) : Prop :=
+  last s false = true.
+Definition ith (s: bitstring) (n: nat): bool :=
+  nth_default false s n.
+Definition keq := @list_eq_dec bool bool_dec.
 Infix "<=?" := le_lt_dec.
+Definition bool_ltb (a b : bool) :=
+  match a, b with
+  | false, true => true
+  | _, _ => false
+  end.
+Fixpoint bitstring_ltb (a b : bitstring) : bool :=
+  match a, b with
+  | nil, cons _ _ => true
+  | cons x a', cons y b' =>
+      if Bool.eqb x y then bitstring_ltb a' b' else bool_ltb x y
+  | _, _ => false
+  end.
 
-Module CritbitTree.
-  Definition bitstring := list bool.
-  Definition K := bitstring.
-  Definition V := nat.
 
-  Definition valid_key (s: bitstring) : Prop :=
-    last s false = true.
-  Definition ith (s: bitstring) (n: nat): bool :=
-    nth_default false s n.
-  Definition keq := @list_eq_dec bool bool_dec.
+(* Notation stuff *)
+Declare Custom Entry bit.
+Notation "0" := false (in custom bit at level 0).
+Notation "1" := true (in custom bit at level 0).
+Declare Custom Entry bitstring.
+Notation "x" := (@cons bool x nil)
+  (in custom bitstring at level 0, x custom bit at level 0).
+Notation "h t" := (@cons bool h t)
+  (in custom bitstring at level 0,
+   h custom bit at level 0, t custom bitstring at level 0).
+Notation "#[ x ]" := x (x custom bitstring at level 0, format "#[ x ]").
 
+Section ct_definition.
+  Context {V : Type}.
+  Context {fmap : map.map K V}.
+  Search map.empty.
+  Definition map_singleton (k:K) (v:V) :=
+    map.put map.empty k v.
   (* TODO: we should not need this function anymore *)
   Fixpoint diff (s1 : bitstring) :=
     match s1 with
@@ -57,15 +82,35 @@ Module CritbitTree.
   | Empty
   | Node (n: node).
 
-  Inductive ct : node -> K -> partial_map K V -> Prop :=
-  | ct_leaf : forall s v, valid_key s -> ct (Leaf s v) s (map_singleton s v)
+  Inductive ct : node -> K -> fmap -> Prop :=
+  | ct_leaf : forall s v n,
+      valid_key s ->
+      ct (Leaf s v) (s ++ repeat false n) (map_singleton s v)
   | ct_internal : forall tl tr s xl xr ml mr,
       ct tl (s++[false]++xl) ml ->
       ct tr (s++[true]++xr) mr ->
-      ct (Internal (length s) tl tr) s (map_union ml mr).
+      ct (Internal (length s) tl tr) s (map.putmany ml mr).
+  
+  Lemma ct_leaf' :
+    forall s s' v n, valid_key s -> s' = s ++ repeat false n -> ct (Leaf s v) s' (map_singleton s v).
+  Proof.
+    intros. subst. econstructor. eauto.
+  Qed.
 
-  Inductive ct_top : tree -> partial_map K V -> Prop :=
-  | ct_top_empty : ct_top Empty map_empty
+  Lemma ct_internal' : 
+    forall tl tr s xl xr m ml mr n,
+      ct tl (s++[false]++xl) ml ->
+      ct tr (s++[true]++xr) mr ->
+      n = length s ->
+      m = map.putmany ml mr ->
+      ct (Internal n tl tr) s m.
+  Proof.
+    intros.
+    subst. econstructor; eauto.
+  Qed.
+
+  Inductive ct_top : tree -> fmap -> Prop :=
+  | ct_top_empty : ct_top Empty map.empty
   | ct_top_node : forall t m s, ct t s m -> ct_top (Node t) m.
 
   (* indices are always increasing as you go down the tree *)
@@ -78,6 +123,12 @@ Module CritbitTree.
     | Leaf k v =>
         (k,v)
     end.
+
+  Lemma find_best_exists_ok:  forall t s m,
+    ct t s m -> forall k v, map.get m s = Some v -> find_best t k = (k, v).
+  Proof.
+    induction 1; simpl; intros.
+  Abort.
 
   Definition lookup (t: tree) (sk: K) : option V :=
     match t with
@@ -130,15 +181,15 @@ Module CritbitTree.
   Qed.
 
   Theorem lookup_exists : forall t m k v,
-    ct_top t m -> m k = Some v -> lookup t k = Some v.
+    ct_top t m -> map.get m k = Some v -> lookup t k = Some v.
   Admitted.
 
   Theorem lookup_none : forall t m k,
-    ct_top t m -> m k = None -> lookup t k = None.
+    ct_top t m -> map.get m k = None -> lookup t k = None.
   Admitted.
 
   Theorem lookup_ok : forall t m k r,
-    ct_top t m -> m k = r -> lookup t k = r.
+    ct_top t m -> map.get m k = r -> lookup t k = r.
   Proof.
     intros.
     destruct r.
@@ -147,13 +198,22 @@ Module CritbitTree.
   Qed.
 
   Theorem insert_ok : forall t m t' k v,
-    ct_top t m -> ct_top t' (map_add m k v).
+    ct_top t m -> ct_top t' (map.put m k v).
   Admitted.
+End ct_definition.
 
-End CritbitTree.
+Section Examples.
 
-Module Examples.
-  Import CritbitTree.
+  Require Import FunctionalExtensionality. 
+  Require Import coqutil.Tactics.Tactics.
+  Require coqutil.Map.SortedList.
+  Local Instance bitstring_strict_order: @SortedList.parameters.strict_order _ bitstring_ltb.
+  Admitted.
+  Definition Build_parameters T := SortedList.parameters.Build_parameters bitstring T bitstring_ltb.
+  Local Instance map T : map.map bitstring T := SortedList.map (Build_parameters T) bitstring_strict_order.
+  Local Instance ok T : @Interface.map.ok bitstring T (map T).
+    pose proof @SortedList.map_ok (Build_parameters T) as H; eapply H.
+  Qed.
 
   Ltac start :=
     repeat (let E := fresh "E" in
@@ -184,7 +244,7 @@ Module Examples.
       simpl;
       subst F).
   
-  Example ct0 := Empty.
+  Example ct0 := @Empty nat.
   Goal lookup ct0 nil = None. Proof. reflexivity. Qed.
 
   Example ct1 :=
@@ -252,9 +312,11 @@ Module Examples.
   Goal ct3_0 = Node (Leaf l0001 0).
   Proof. reflexivity. Qed.
   Fact ct3_0_ok : ct_top ct3_0 map3_0.
-  Admitted.
+    eapply ct_top_node.
+    eapply ct_leaf' with (n := 0); easy.
+  Qed.
 
-  Example map3_1 := map_add map3_0 l00101 1.
+  Example map3_1 := map.put map3_0 l00101 1.
   Example ct3_1 := insert ct3_0 l00101 1.
   Goal ct3_1 = Node 
     (Internal 2
@@ -262,9 +324,16 @@ Module Examples.
       (Leaf l00101 1)).
   Proof. reflexivity. Qed.
   Fact ct3_1_ok : ct_top ct3_1 map3_1.
-  Admitted.
+    unfold ct3_1, map3_1, map3_0; simpl.
+    apply ct_top_node with (s := [false; false]).
+    eapply ct_internal'.
+    - eapply ct_leaf' with (n := 0); easy.
+    - eapply ct_leaf' with (n := 0); easy.
+    - easy.
+    - easy.
+  Qed.
 
-  Example map3_2 := map_add map3_1 l001 2.
+  Example map3_2 := map.put map3_1 l001 2.
   Example ct3_2 := insert ct3_1 l001 2.
   Goal ct3_2 = Node
     (Internal 2
@@ -272,21 +341,13 @@ Module Examples.
       (Internal 4
         (Leaf l001 2)
         (Leaf l00101 1))).
-  Proof.
-    unfold ct3_2, insert.
-    remember insert' as G.
-    step find_best.
-    step find_best.
-    step find_best.
-    subst G.
-    step insert'.
-    step insert'.
-    reflexivity.
-  Qed.
+  Proof. reflexivity. Qed.
   Fact ct3_2_ok : ct_top ct3_2 map3_2.
+    apply ct_top_node with (s := [false; false]); simpl.
+    eapply ct_internal'.
   Admitted.
 
-  Example map3_3 := map_add map3_2 l10101 3.
+  Example map3_3 := map.put map3_2 l10101 3.
   Example ct3_3 := insert ct3_2 l10101 3.
   Goal ct3_3 = Node
     (Internal 0
@@ -300,7 +361,7 @@ Module Examples.
   Fact ct3_3_ok : ct_top ct3_3 map3_3.
   Admitted.
 
-  Example map3_4 := map_add map3_3 l00111 4.
+  Example map3_4 := map.put map3_3 l00111 4.
   Example ct3_4 := insert ct3_3 l00111 4.
   Goal ct3_4 = Node
     (Internal 0
@@ -316,7 +377,7 @@ Module Examples.
   Fact ct3_4_ok : ct_top ct3_4 map3_4.
   Admitted.
 
-  Example map3_5 := map_add map3_4 l10001 5.
+  Example map3_5 := map.put map3_4 l10001 5.
   Example ct3_5 := insert ct3_4 l10001 5.
   Goal ct3_5 = Node
     (Internal 0
@@ -330,17 +391,11 @@ Module Examples.
       (Internal 2
         (Leaf l10001 5)
         (Leaf l10101 3))).
-  Proof.
-    unfold ct3_5, insert.
-    start.
-    step insert'.
-    step insert'.
-    reflexivity.
-  Qed.
+  Proof. reflexivity. Qed.
   Fact ct3_5_ok : ct_top ct3_5 map3_5.
   Admitted.
 
-  Example map3_6 := map_add map3_5 l0011 6.
+  Example map3_6 := map.put map3_5 l0011 6.
   Example ct3_6 := insert ct3_5 l0011 6.
   Goal ct3_6 = Node
     (Internal 0
@@ -356,15 +411,7 @@ Module Examples.
       (Internal 2
         (Leaf l10001 5)
         (Leaf l10101 3))).
-  Proof.
-    unfold ct3_6, insert.
-    start.
-    step insert'.
-    step insert'.
-    step insert'.
-    step insert'.
-    reflexivity.
-  Qed.
+  Proof. reflexivity. Qed.
   Fact ct3_6_ok : ct_top ct3_6 map3_6.
   Admitted.
 
