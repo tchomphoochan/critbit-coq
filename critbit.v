@@ -38,6 +38,7 @@ Notation "x" := (@cons bool x nil)
 Notation "h t" := (@cons bool h t)
   (in custom bitstring at level 0,
    h custom bit at level 0, t custom bitstring at level 0).
+Notation "#[]" := nil (format "#[]").
 Notation "#[ x ]" := x (x custom bitstring at level 0, format "#[ x ]").
 
 Section ct_definition.
@@ -248,84 +249,63 @@ Section Examples.
   Goal lookup ct0 nil = None. Proof. reflexivity. Qed.
 
   Example ct1 :=
-    Node (Leaf [true; false; false] 0).
-  Goal lookup ct1 [true; false; false] = Some 0. Proof. reflexivity. Qed.
-  Goal lookup ct1 [false] = None. Proof. reflexivity. Qed.
-  Goal lookup ct1 [false; false; false] = None. Proof. reflexivity. Qed.
-
-  Definition l0001 := [false; false; false; true].
-  Goal valid_key l0001. Proof. reflexivity. Qed.
-
-  Definition l001 := [false; false; true].
-  Goal valid_key l001. Proof. reflexivity. Qed.
-
-  Definition l00101 := [false; false; true; false; true].
-  Goal valid_key l00101. Proof. reflexivity. Qed.
-
-  Definition l0011 := [false; false; true; true].
-  Goal valid_key l0011. Proof. reflexivity. Qed.
-
-  Definition l00111 := [false; false; true; true; true].
-  Goal valid_key l00111. Proof. reflexivity. Qed.
-
-  Definition l10001 := [true; false; false; false; true].
-  Goal valid_key l10001. Proof. reflexivity. Qed.
-
-  Definition l10101 := [true; false; true; false; true].
-  Goal valid_key l10101. Proof. reflexivity. Qed.
+    Node (Leaf #[1 0 0] 0).
+  Goal lookup ct1 #[1 0 0] = Some 0. Proof. reflexivity. Qed.
+  Goal lookup ct1 #[] = None. Proof. reflexivity. Qed.
+  Goal lookup ct1 #[1 0 1] = None. Proof. reflexivity. Qed.
 
   Example ct2 :=
     Node (
       Internal 0
         (Internal 2
-          (Leaf l0001 0)
+          (Leaf #[0 0 0 1] 0)
           (Internal 3
             (Internal 4
-              (Leaf l001 1)
-              (Leaf l00101 2))
+              (Leaf #[0 0 1] 1)
+              (Leaf #[0 0 1 0 1] 2))
             (Internal 4
-              (Leaf l0011 3)
-              (Leaf l00111 4))))
+              (Leaf #[0 0 1 1] 3)
+              (Leaf #[0 0 1 1 1] 4))))
         (Internal 2
-          (Leaf l10001 5)
-          (Leaf l10101 6))).
-  Goal lookup ct2 l0001 = Some 0. Proof. reflexivity. Qed.
-  Goal lookup ct2 l001 = Some 1. Proof. reflexivity. Qed.
-  Goal lookup ct2 l00101 = Some 2. Proof. reflexivity. Qed.
-  Goal lookup ct2 l0011 = Some 3. Proof. reflexivity. Qed.
-  Goal lookup ct2 l00111 = Some 4. Proof. reflexivity. Qed.
-  Goal lookup ct2 l10001 = Some 5. Proof. reflexivity. Qed.
-  Goal lookup ct2 l10101 = Some 6. Proof. reflexivity. Qed.
-  Goal lookup ct2 [true] = None.
+          (Leaf #[1 0 0 0 1] 5)
+          (Leaf #[1 0 1 0 1] 6))).
+  Goal lookup ct2 #[0 0 0 1] = Some 0. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[0 0 1] = Some 1. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[0 0 1 0 1] = Some 2. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[0 0 1 1] = Some 3. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[0 0 1 1 1] = Some 4. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[1 0 0 0 1] = Some 5. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[1 0 1 0 1] = Some 6. Proof. reflexivity. Qed.
+  Goal lookup ct2 #[1] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;true] = None.
+  Goal lookup ct2 #[0 1] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;true;true] = None.
+  Goal lookup ct2 #[0 1 1] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;true;true;false;true] = None.
+  Goal lookup ct2 #[0 1 1 0 1] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [true;false;true] = None.
+  Goal lookup ct2 #[1 0 1] = None.
   Proof. reflexivity. Qed.
 
-  Example map3_0 := map_singleton l0001 0.
-  Example ct3_0 := insert Empty l0001 0.
-  Goal ct3_0 = Node (Leaf l0001 0).
+  Example map3_0 := map_singleton #[0 0 0 1] 0.
+  Example ct3_0 := insert Empty #[0 0 0 1] 0.
+  Goal ct3_0 = Node (Leaf #[0 0 0 1] 0).
   Proof. reflexivity. Qed.
   Fact ct3_0_ok : ct_top ct3_0 map3_0.
     eapply ct_top_node.
     eapply ct_leaf' with (n := 0); easy.
   Qed.
 
-  Example map3_1 := map.put map3_0 l00101 1.
-  Example ct3_1 := insert ct3_0 l00101 1.
+  Example map3_1 := map.put map3_0 #[0 0 1 0 1] 1.
+  Example ct3_1 := insert ct3_0 #[0 0 1 0 1] 1.
   Goal ct3_1 = Node 
     (Internal 2
-      (Leaf l0001 0)
-      (Leaf l00101 1)).
+      (Leaf #[0 0 0 1] 0)
+      (Leaf #[0 0 1 0 1] 1)).
   Proof. reflexivity. Qed.
   Fact ct3_1_ok : ct_top ct3_1 map3_1.
     unfold ct3_1, map3_1, map3_0; simpl.
-    apply ct_top_node with (s := [false; false]).
+    apply ct_top_node with (s := #[0 0]).
     eapply ct_internal'.
     - eapply ct_leaf' with (n := 0); easy.
     - eapply ct_leaf' with (n := 0); easy.
@@ -333,84 +313,84 @@ Section Examples.
     - easy.
   Qed.
 
-  Example map3_2 := map.put map3_1 l001 2.
-  Example ct3_2 := insert ct3_1 l001 2.
+  Example map3_2 := map.put map3_1 #[0 0 1] 2.
+  Example ct3_2 := insert ct3_1 #[0 0 1] 2.
   Goal ct3_2 = Node
     (Internal 2
-      (Leaf l0001 0)
+      (Leaf #[0 0 0 1] 0)
       (Internal 4
-        (Leaf l001 2)
-        (Leaf l00101 1))).
+        (Leaf #[0 0 1] 2)
+        (Leaf #[0 0 1 0 1] 1))).
   Proof. reflexivity. Qed.
   Fact ct3_2_ok : ct_top ct3_2 map3_2.
-    apply ct_top_node with (s := [false; false]); simpl.
+    apply ct_top_node with (s := #[0 0]); simpl.
     eapply ct_internal'.
   Admitted.
 
-  Example map3_3 := map.put map3_2 l10101 3.
-  Example ct3_3 := insert ct3_2 l10101 3.
+  Example map3_3 := map.put map3_2 #[1 0 1 0 1] 3.
+  Example ct3_3 := insert ct3_2 #[1 0 1 0 1] 3.
   Goal ct3_3 = Node
     (Internal 0
       (Internal 2
-        (Leaf l0001 0)
+        (Leaf #[0 0 0 1] 0)
         (Internal 4
-          (Leaf l001 2)
-          (Leaf l00101 1)))
-      (Leaf l10101 3)).
+          (Leaf #[0 0 1] 2)
+          (Leaf #[0 0 1 0 1] 1)))
+      (Leaf #[1 0 1 0 1] 3)).
   Proof. reflexivity. Qed.
   Fact ct3_3_ok : ct_top ct3_3 map3_3.
   Admitted.
 
-  Example map3_4 := map.put map3_3 l00111 4.
-  Example ct3_4 := insert ct3_3 l00111 4.
+  Example map3_4 := map.put map3_3 #[0 0 1 1 1] 4.
+  Example ct3_4 := insert ct3_3 #[0 0 1 1 1] 4.
   Goal ct3_4 = Node
     (Internal 0
       (Internal 2
-        (Leaf l0001 0)
+        (Leaf #[0 0 0 1] 0)
         (Internal 3
           (Internal 4
-            (Leaf l001 2)
-            (Leaf l00101 1))
-          (Leaf l00111 4)))
-      (Leaf l10101 3)).
+            (Leaf #[0 0 1] 2)
+            (Leaf #[0 0 1 0 1] 1))
+          (Leaf #[0 0 1 1 1] 4)))
+      (Leaf #[1 0 1 0 1] 3)).
   Proof. reflexivity. Qed.
   Fact ct3_4_ok : ct_top ct3_4 map3_4.
   Admitted.
 
-  Example map3_5 := map.put map3_4 l10001 5.
-  Example ct3_5 := insert ct3_4 l10001 5.
+  Example map3_5 := map.put map3_4 #[1 0 0 0 1] 5.
+  Example ct3_5 := insert ct3_4 #[1 0 0 0 1] 5.
   Goal ct3_5 = Node
     (Internal 0
       (Internal 2
-        (Leaf l0001 0)
+        (Leaf #[0 0 0 1] 0)
         (Internal 3
           (Internal 4
-            (Leaf l001 2)
-            (Leaf l00101 1))
-          (Leaf l00111 4)))
+            (Leaf #[0 0 1] 2)
+            (Leaf #[0 0 1 0 1] 1))
+          (Leaf #[0 0 1 1 1] 4)))
       (Internal 2
-        (Leaf l10001 5)
-        (Leaf l10101 3))).
+        (Leaf #[1 0 0 0 1] 5)
+        (Leaf #[1 0 1 0 1] 3))).
   Proof. reflexivity. Qed.
   Fact ct3_5_ok : ct_top ct3_5 map3_5.
   Admitted.
 
-  Example map3_6 := map.put map3_5 l0011 6.
-  Example ct3_6 := insert ct3_5 l0011 6.
+  Example map3_6 := map.put map3_5 #[0 0 1 1] 6.
+  Example ct3_6 := insert ct3_5 #[0 0 1 1] 6.
   Goal ct3_6 = Node
     (Internal 0
       (Internal 2
-        (Leaf l0001 0)
+        (Leaf #[0 0 0 1] 0)
         (Internal 3
           (Internal 4
-            (Leaf l001 2)
-            (Leaf l00101 1))
+            (Leaf #[0 0 1] 2)
+            (Leaf #[0 0 1 0 1] 1))
           (Internal 4
-            (Leaf l0011 6)
-            (Leaf l00111 4))))
+            (Leaf #[0 0 1 1] 6)
+            (Leaf #[0 0 1 1 1] 4))))
       (Internal 2
-        (Leaf l10001 5)
-        (Leaf l10101 3))).
+        (Leaf #[1 0 0 0 1] 5)
+        (Leaf #[1 0 1 0 1] 3))).
   Proof. reflexivity. Qed.
   Fact ct3_6_ok : ct_top ct3_6 map3_6.
   Admitted.
