@@ -27,7 +27,6 @@ Fixpoint bitstring_ltb (a b : bitstring) : bool :=
   | _, _ => false
   end.
 
-
 (* Notation stuff *)
 Declare Custom Entry bit.
 Notation "0" := false (in custom bit at level 0).
@@ -40,6 +39,22 @@ Notation "h t" := (@cons bool h t)
    h custom bit at level 0, t custom bitstring at level 0).
 Notation "#[]" := nil (format "#[]").
 Notation "#[ x ]" := x (x custom bitstring at level 0, format "#[ x ]").
+
+Fixpoint get_leading_falses (a : bitstring) : list bool :=
+  match a with
+  | false::a' => false :: get_leading_falses a'
+  | _ => nil
+  end.
+Fixpoint bitstring_max_prefix (a b : bitstring) : list bool :=
+  match a, b with
+  | x::a', y::b' => if (eqb x y) then x::(bitstring_max_prefix a' b') else nil
+  | false::a', nil => get_leading_falses a
+  | nil, false::b' => get_leading_falses b
+  | _, _ => nil
+  end.
+Goal bitstring_max_prefix #[0 0 1] #[0 0 1 0 1 1] = #[0 0 1 0].
+Proof. reflexivity. Qed.
+Ltac bitstring_max_prefix a b := constr:(bitstring_max_prefix a b).
 
 Section ct_definition.
   Context {V : Type}.
@@ -82,6 +97,17 @@ Section ct_definition.
   Inductive tree : Type :=
   | Empty
   | Node (n: node).
+
+  Fixpoint max_prefix' (t : node) : bitstring :=
+    match t with
+    | Leaf k _ => k
+    | Internal _ l r => bitstring_max_prefix (max_prefix' l) (max_prefix' r)
+    end.
+  Definition max_prefix (t : tree) : bitstring :=
+    match t with
+    | Empty => #[]
+    | Node n => max_prefix' n
+    end.
 
   Inductive ct : node -> K -> fmap -> Prop :=
   | ct_leaf : forall s v n,
@@ -293,8 +319,25 @@ Section Examples.
   Proof. reflexivity. Qed.
   Fact ct3_0_ok : ct_top ct3_0 map3_0.
     eapply ct_top_node.
-    eapply ct_leaf' with (n := 0); easy.
+    eapply ct_leaf' with (n := 0); reflexivity.
   Qed.
+  Ltac max_prefix' t := constr:(@max_prefix' nat t).
+  Ltac max_prefix t := constr:(@max_prefix nat t).
+
+  Ltac internal :=
+    cbv; match goal with
+    | [|- ct (Internal ?i ?l ?r) ?t ?m] =>
+        let p := max_prefix' (Internal i l r) in
+        eapply ct_internal' with (s := p)
+    end; try reflexivity.
+  Ltac leaf' i :=
+    cbv; match goal with
+    | [|- ct (Leaf ?l ?i) ?t ?m] =>
+      solve [ apply ct_leaf' with (n := i); simpl; reflexivity | leaf' (i+1) ]
+    end.
+  Ltac leaf := leaf' 0.
+  Ltac ct' := repeat (reflexivity || internal || leaf).
+  Ltac ct := eapply ct_top_node; ct'.
 
   Example map3_1 := map.put map3_0 #[0 0 1 0 1] 1.
   Example ct3_1 := insert ct3_0 #[0 0 1 0 1] 1.
@@ -303,15 +346,7 @@ Section Examples.
       (Leaf #[0 0 0 1] 0)
       (Leaf #[0 0 1 0 1] 1)).
   Proof. reflexivity. Qed.
-  Fact ct3_1_ok : ct_top ct3_1 map3_1.
-    unfold ct3_1, map3_1, map3_0; simpl.
-    apply ct_top_node with (s := #[0 0]).
-    eapply ct_internal'.
-    - eapply ct_leaf' with (n := 0); easy.
-    - eapply ct_leaf' with (n := 0); easy.
-    - easy.
-    - easy.
-  Qed.
+  Goal ct_top ct3_1 map3_1. Proof. ct. Qed.
 
   Example map3_2 := map.put map3_1 #[0 0 1] 2.
   Example ct3_2 := insert ct3_1 #[0 0 1] 2.
@@ -322,10 +357,7 @@ Section Examples.
         (Leaf #[0 0 1] 2)
         (Leaf #[0 0 1 0 1] 1))).
   Proof. reflexivity. Qed.
-  Fact ct3_2_ok : ct_top ct3_2 map3_2.
-    apply ct_top_node with (s := #[0 0]); simpl.
-    eapply ct_internal'.
-  Admitted.
+  Goal ct_top ct3_2 map3_2. Proof. ct. Qed.
 
   Example map3_3 := map.put map3_2 #[1 0 1 0 1] 3.
   Example ct3_3 := insert ct3_2 #[1 0 1 0 1] 3.
@@ -338,8 +370,7 @@ Section Examples.
           (Leaf #[0 0 1 0 1] 1)))
       (Leaf #[1 0 1 0 1] 3)).
   Proof. reflexivity. Qed.
-  Fact ct3_3_ok : ct_top ct3_3 map3_3.
-  Admitted.
+  Goal ct_top ct3_3 map3_3. Proof. ct. Qed.
 
   Example map3_4 := map.put map3_3 #[0 0 1 1 1] 4.
   Example ct3_4 := insert ct3_3 #[0 0 1 1 1] 4.
@@ -354,8 +385,7 @@ Section Examples.
           (Leaf #[0 0 1 1 1] 4)))
       (Leaf #[1 0 1 0 1] 3)).
   Proof. reflexivity. Qed.
-  Fact ct3_4_ok : ct_top ct3_4 map3_4.
-  Admitted.
+  Goal ct_top ct3_4 map3_4. Proof. ct. Qed.
 
   Example map3_5 := map.put map3_4 #[1 0 0 0 1] 5.
   Example ct3_5 := insert ct3_4 #[1 0 0 0 1] 5.
@@ -372,8 +402,7 @@ Section Examples.
         (Leaf #[1 0 0 0 1] 5)
         (Leaf #[1 0 1 0 1] 3))).
   Proof. reflexivity. Qed.
-  Fact ct3_5_ok : ct_top ct3_5 map3_5.
-  Admitted.
+  Goal ct_top ct3_5 map3_5. Proof. ct. Qed.
 
   Example map3_6 := map.put map3_5 #[0 0 1 1] 6.
   Example ct3_6 := insert ct3_5 #[0 0 1 1] 6.
@@ -392,7 +421,6 @@ Section Examples.
         (Leaf #[1 0 0 0 1] 5)
         (Leaf #[1 0 1 0 1] 3))).
   Proof. reflexivity. Qed.
-  Fact ct3_6_ok : ct_top ct3_6 map3_6.
-  Admitted.
+  Goal ct_top ct3_6 map3_6. Proof. ct. Qed.
 
 End Examples.
