@@ -15,10 +15,13 @@ Module CritbitTree.
   Definition K := bitstring.
   Definition V := nat.
 
-  Definition valid_key (s: bitstring) : Prop := last s false = true.
+  Definition valid_key (s: bitstring) : Prop :=
+    last s false = true.
   Definition ith (s: bitstring) (n: nat): bool :=
     nth_default false s n.
   Definition keq := @list_eq_dec bool bool_dec.
+
+  (* TODO: we should not need this function anymore *)
   Fixpoint diff (s1 : bitstring) :=
     match s1 with
     | c1::s1 => fun s2 => match s2 with
@@ -39,6 +42,7 @@ Module CritbitTree.
       | nil => None
       end
     end.
+  (* TODO: eliminate invalid keys *)
   Goal diff [] [false;true;false] = Some 1. Proof. reflexivity. Qed.
   Goal diff [] [false] = None. Proof. reflexivity. Qed.
   Goal diff [true;true] [true;true;true] = Some 2. Proof. reflexivity. Qed.
@@ -133,6 +137,15 @@ Module CritbitTree.
     ct_top t m -> m k = None -> lookup t k = None.
   Admitted.
 
+  Theorem lookup_ok : forall t m k r,
+    ct_top t m -> m k = r -> lookup t k = r.
+  Proof.
+    intros.
+    destruct r.
+    - eauto using lookup_exists.
+    - eauto using lookup_none.
+  Qed.
+
   Theorem insert_ok : forall t m t' k v,
     ct_top t m -> ct_top t' (map_add m k v).
   Admitted.
@@ -180,64 +193,77 @@ Module Examples.
   Goal lookup ct1 [false] = None. Proof. reflexivity. Qed.
   Goal lookup ct1 [false; false; false] = None. Proof. reflexivity. Qed.
 
-  Definition l00010 := [false; false; false; true; false].
-  Definition l00100 := [false; false; true; false; false].
+  Definition l0001 := [false; false; false; true].
+  Goal valid_key l0001. Proof. reflexivity. Qed.
+
+  Definition l001 := [false; false; true].
+  Goal valid_key l001. Proof. reflexivity. Qed.
+
   Definition l00101 := [false; false; true; false; true].
-  Definition l00110 := [false; false; true; true; false].
+  Goal valid_key l00101. Proof. reflexivity. Qed.
+
+  Definition l0011 := [false; false; true; true].
+  Goal valid_key l0011. Proof. reflexivity. Qed.
+
   Definition l00111 := [false; false; true; true; true].
+  Goal valid_key l00111. Proof. reflexivity. Qed.
+
   Definition l10001 := [true; false; false; false; true].
+  Goal valid_key l10001. Proof. reflexivity. Qed.
+
   Definition l10101 := [true; false; true; false; true].
+  Goal valid_key l10101. Proof. reflexivity. Qed.
 
   Example ct2 :=
     Node (
       Internal 0
         (Internal 2
-          (Leaf l00010 0)
+          (Leaf l0001 0)
           (Internal 3
             (Internal 4
-              (Leaf l00100 1)
+              (Leaf l001 1)
               (Leaf l00101 2))
             (Internal 4
-              (Leaf l00110 3)
+              (Leaf l0011 3)
               (Leaf l00111 4))))
         (Internal 2
           (Leaf l10001 5)
           (Leaf l10101 6))).
-  Goal lookup ct2 l00010 = Some 0. Proof. reflexivity. Qed.
-  Goal lookup ct2 l00100 = Some 1. Proof. reflexivity. Qed.
+  Goal lookup ct2 l0001 = Some 0. Proof. reflexivity. Qed.
+  Goal lookup ct2 l001 = Some 1. Proof. reflexivity. Qed.
   Goal lookup ct2 l00101 = Some 2. Proof. reflexivity. Qed.
-  Goal lookup ct2 l00110 = Some 3. Proof. reflexivity. Qed.
+  Goal lookup ct2 l0011 = Some 3. Proof. reflexivity. Qed.
   Goal lookup ct2 l00111 = Some 4. Proof. reflexivity. Qed.
   Goal lookup ct2 l10001 = Some 5. Proof. reflexivity. Qed.
   Goal lookup ct2 l10101 = Some 6. Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;false;false;false;false] = None.
+  Goal lookup ct2 [true] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;true;false;false;false] = None.
+  Goal lookup ct2 [false;true] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [false;true;true;false;false] = None.
+  Goal lookup ct2 [false;true;true] = None.
   Proof. reflexivity. Qed.
   Goal lookup ct2 [false;true;true;false;true] = None.
   Proof. reflexivity. Qed.
-  Goal lookup ct2 [true;false;true;false;false] = None.
+  Goal lookup ct2 [true;false;true] = None.
   Proof. reflexivity. Qed.
 
-  Example ct3_0 := insert Empty l00010 0.
-  Goal ct3_0 = Node (Leaf l00010 0).
+  Example ct3_0 := insert Empty l0001 0.
+  Goal ct3_0 = Node (Leaf l0001 0).
   Proof. reflexivity. Qed.
 
   Example ct3_1 := insert ct3_0 l00101 1.
   Goal ct3_1 = Node 
     (Internal 2
-      (Leaf l00010 0)
+      (Leaf l0001 0)
       (Leaf l00101 1)).
   Proof. reflexivity. Qed.
 
-  Example ct3_2 := insert ct3_1 l00100 2.
+  Example ct3_2 := insert ct3_1 l001 2.
   Goal ct3_2 = Node
     (Internal 2
-      (Leaf l00010 0)
+      (Leaf l0001 0)
       (Internal 4
-        (Leaf l00100 2)
+        (Leaf l001 2)
         (Leaf l00101 1))).
   Proof.
     unfold ct3_2, insert.
@@ -255,9 +281,9 @@ Module Examples.
   Goal ct3_3 = Node
     (Internal 0
       (Internal 2
-        (Leaf l00010 0)
+        (Leaf l0001 0)
         (Internal 4
-          (Leaf l00100 2)
+          (Leaf l001 2)
           (Leaf l00101 1)))
       (Leaf l10101 3)).
   Proof. reflexivity. Qed.
@@ -266,10 +292,10 @@ Module Examples.
   Goal ct3_4 = Node
     (Internal 0
       (Internal 2
-        (Leaf l00010 0)
+        (Leaf l0001 0)
         (Internal 3
           (Internal 4
-            (Leaf l00100 2)
+            (Leaf l001 2)
             (Leaf l00101 1))
           (Leaf l00111 4)))
       (Leaf l10101 3)).
@@ -279,10 +305,10 @@ Module Examples.
   Goal ct3_5 = Node
     (Internal 0
       (Internal 2
-        (Leaf l00010 0)
+        (Leaf l0001 0)
         (Internal 3
           (Internal 4
-            (Leaf l00100 2)
+            (Leaf l001 2)
             (Leaf l00101 1))
           (Leaf l00111 4)))
       (Internal 2
@@ -296,17 +322,17 @@ Module Examples.
     reflexivity.
   Qed.
 
-  Example ct3_6 := insert ct3_5 l00110 6.
+  Example ct3_6 := insert ct3_5 l0011 6.
   Goal ct3_6 = Node
     (Internal 0
       (Internal 2
-        (Leaf l00010 0)
+        (Leaf l0001 0)
         (Internal 3
           (Internal 4
-            (Leaf l00100 2)
+            (Leaf l001 2)
             (Leaf l00101 1))
           (Internal 4
-            (Leaf l00110 6)
+            (Leaf l0011 6)
             (Leaf l00111 4))))
       (Internal 2
         (Leaf l10001 5)
