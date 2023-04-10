@@ -4,6 +4,7 @@ Parameter TODO : forall {t:Type}, t.
 
 Definition partial_map (K V : Type) := K -> (option V).
 Parameter map_singleton : forall {K V : Type} (k : K) (v : V), partial_map K V.
+Parameter map_add : forall {K V : Type} (m : partial_map K V) (k : K) (v : V), partial_map K V.
 Parameter map_empty : forall {K V : Type}, partial_map K V.
 Parameter map_union : forall {K V : Type}, partial_map K V -> partial_map K V -> partial_map K V.
 
@@ -14,6 +15,7 @@ Module CritbitTree.
   Definition K := bitstring.
   Definition V := nat.
 
+  Definition valid_key (s: bitstring) : Prop := last s false = true.
   Definition ith (s: bitstring) (n: nat): bool :=
     nth_default false s n.
   Definition keq := @list_eq_dec bool bool_dec.
@@ -52,7 +54,7 @@ Module CritbitTree.
   | Node (n: node).
 
   Inductive ct : node -> K -> partial_map K V -> Prop :=
-  | ct_leaf : forall s v, ct (Leaf s v) s (map_singleton s v)
+  | ct_leaf : forall s v, valid_key s -> ct (Leaf s v) s (map_singleton s v)
   | ct_internal : forall tl tr s xl xr ml mr,
       ct tl (s++[false]++xl) ml ->
       ct tr (s++[true]++xr) mr ->
@@ -123,27 +125,22 @@ Module CritbitTree.
     reflexivity.
   Qed.
 
-  Theorem update_eq :
-    forall t ik iv, lookup (insert t ik iv) ik = Some iv.
-  Proof.
-    induction t; intros; simpl.
-    - destruct keq; easy.
-    - admit.
+  Theorem lookup_exists : forall t m k v,
+    ct_top t m -> m k = Some v -> lookup t k = Some v.
   Admitted.
 
-  Theorem update_neq :
-    forall t ik iv k, ik <> k -> lookup (insert t ik iv) k = lookup t k.
-  Proof.
-    induction t; intros; simpl.
-    - destruct keq; easy.
-    - admit.
+  Theorem lookup_none : forall t m k,
+    ct_top t m -> m k = None -> lookup t k = None.
+  Admitted.
+
+  Theorem insert_ok : forall t m t' k v,
+    ct_top t m -> ct_top t' (map_add m k v).
   Admitted.
 
 End CritbitTree.
 
 Module Examples.
-  Module CT := CritbitTree.
-  Import CT.
+  Import CritbitTree.
 
   Ltac start :=
     repeat (let E := fresh "E" in
