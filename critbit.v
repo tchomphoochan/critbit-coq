@@ -110,31 +110,18 @@ Section ct_definition.
     end.
 
   Inductive ct : node -> K -> fmap -> Prop :=
-  | ct_leaf : forall s v n,
-      valid_key s ->
-      ct (Leaf s v) (s ++ repeat false n) (map_singleton s v)
-  | ct_internal : forall tl tr s xl xr ml mr,
-      ct tl (s++[false]++xl) ml ->
-      ct tr (s++[true]++xr) mr ->
-      ct (Internal (length s) tl tr) s (map.putmany ml mr).
-  
-  Lemma ct_leaf' :
-    forall s s' v n, valid_key s -> s' = s ++ repeat false n -> ct (Leaf s v) s' (map_singleton s v).
-  Proof.
-    intros. subst. econstructor. eauto.
-  Qed.
-
-  Lemma ct_internal' : 
-    forall tl tr s xl xr m ml mr n,
-      ct tl (s++[false]++xl) ml ->
-      ct tr (s++[true]++xr) mr ->
-      n = length s ->
-      m = map.putmany ml mr ->
-      ct (Internal n tl tr) s m.
-  Proof.
-    intros.
-    subst. econstructor; eauto.
-  Qed.
+  | ct_leaf :
+      forall s s' v n,
+        valid_key s ->
+        s' = s ++ repeat false n ->
+        ct (Leaf s v) s' (map_singleton s v)
+  | ct_internal :
+      forall tl tr s xl xr m ml mr n,
+        ct tl (s++[false]++xl) ml ->
+        ct tr (s++[true]++xr) mr ->
+        n = length s ->
+        m = map.putmany ml mr ->
+        ct (Internal n tl tr) s m.
 
   Inductive ct_top : tree -> fmap -> Prop :=
   | ct_top_empty : ct_top Empty map.empty
@@ -155,7 +142,7 @@ Section ct_definition.
     ct t s m -> forall k v, map.get m s = Some v -> find_best t k = (k, v).
   Proof.
     induction 1; simpl; intros.
-  Abort.
+  Admitted.
 
   Definition lookup (t: tree) (sk: K) : option V :=
     match t with
@@ -319,7 +306,7 @@ Section Examples.
   Proof. reflexivity. Qed.
   Fact ct3_0_ok : ct_top ct3_0 map3_0.
     eapply ct_top_node.
-    eapply ct_leaf' with (n := 0); reflexivity.
+    eapply ct_leaf with (n := 0); reflexivity.
   Qed.
   Ltac max_prefix' t := constr:(@max_prefix' nat t).
   Ltac max_prefix t := constr:(@max_prefix nat t).
@@ -328,16 +315,16 @@ Section Examples.
     cbv; match goal with
     | [|- ct (Internal ?i ?l ?r) ?t ?m] =>
         let p := max_prefix' (Internal i l r) in
-        eapply ct_internal' with (s := p)
+        eapply ct_internal with (s := p)
     end; try reflexivity.
   Ltac leaf' i :=
     cbv; match goal with
     | [|- ct (Leaf ?l ?i) ?t ?m] =>
-      solve [ apply ct_leaf' with (n := i); simpl; reflexivity | leaf' (i+1) ]
+      solve [ apply ct_leaf with (n := i); simpl; reflexivity | leaf' (i+1) ]
     end.
   Ltac leaf := leaf' 0.
-  Ltac ct' := repeat (reflexivity || internal || leaf).
-  Ltac ct := eapply ct_top_node; ct'.
+  Ltac ct' := progress repeat (reflexivity || internal || leaf).
+  Ltac ct := eapply ct_top_node; simpl; ct'.
 
   Example map3_1 := map.put map3_0 #[0 0 1 0 1] 1.
   Example ct3_1 := insert ct3_0 #[0 0 1 0 1] 1.
