@@ -59,9 +59,37 @@ Ltac bitstring_max_prefix a b := constr:(bitstring_max_prefix a b).
 Section ct_definition.
   Context {V : Type}.
   Context {fmap : map.map K V}.
-  Search map.empty.
+  Axiom veq_exm: forall (v1 v2 : V),
+    v1 = v2 \/ v1 <> v2.
   Definition map_singleton (k:K) (v:V) :=
     map.put map.empty k v.
+  Context {map_ok : map.ok fmap}.
+  Lemma map_get_singleton : forall k v sk rv,
+    map.get (map_singleton k v) sk = Some rv ->
+    k = sk /\ v = rv.
+  Proof.
+    unfold map_singleton.
+    intros.
+    destruct (keq sk k).
+    - destruct (veq_exm v rv); subst.
+      + split; reflexivity.
+      + split; try reflexivity.
+        rewrite map.get_put_same in H.
+        inversion H. contradiction.
+    - rewrite map.get_put_diff in H.
+      + rewrite map.get_empty in H. discriminate.
+      + assumption.
+  Qed.
+  Lemma map_get_singleton_none : forall k v sk,
+    map.get (map_singleton k v) sk = None -> k <> sk.
+  Proof.
+    unfold map_singleton.
+    intros.
+    destruct (keq sk k); subst; eauto.
+    rewrite map.get_put_same in H.
+    discriminate.
+  Qed.
+
   (* TODO: we should not need this function anymore *)
   Fixpoint diff (s1 : bitstring) :=
     match s1 with
@@ -138,10 +166,33 @@ Section ct_definition.
         (k,v)
     end.
 
-  Lemma find_best_exists_ok:  forall t s m,
-    ct t s m -> forall k v, map.get m s = Some v -> find_best t k = (k, v).
+  Lemma find_best_ok:  forall t m s,
+    ct t s m -> 
+    (forall k, valid_key k ->
+      (forall v, map.get m k = Some v -> find_best t k = (k, v)) /\
+      (map.get m k = None -> forall k', fst (find_best t k') <> k)).
   Proof.
-    induction 1; simpl; intros.
+    induction 1; subst; simpl; split; intros.
+    (* base case *)
+    - apply map_get_singleton in H1. destruct H1. subst. reflexivity.
+    - apply map_get_singleton_none in H1. assumption.
+    (* inductive case *)
+    - destruct (ith k (length s)) eqn:E.
+      + apply IHct2; auto. 
+        cut (map.get ml k = None).
+        * admit. (* should be a map lemma *)
+        * admit. (* need to relate to H somehow *)
+      + apply IHct1; auto.
+        cut (map.get mr k = None).
+        * admit.
+        * admit.
+    - eapply map.invert_get_putmany_None with
+        (m1 := ml) (m2 := mr) in H2.
+      destruct H2.
+      destruct (ith k' (length s)) eqn:E.
+      + apply IHct2; auto.
+      + apply IHct1; auto.
+      Unshelve. all: admit.
   Admitted.
 
   Definition lookup (t: tree) (sk: K) : option V :=
@@ -195,15 +246,32 @@ Section ct_definition.
   Qed.
 
   Theorem lookup_exists : forall t m k v,
-    ct_top t m -> map.get m k = Some v -> lookup t k = Some v.
-  Admitted.
+    ct_top t m -> valid_key k -> map.get m k = Some v -> lookup t k = Some v.
+  Proof.
+    induction 1; intros; simpl.
+    - rewrite map.get_empty in H0. discriminate.
+    - destruct (find_best t k) eqn:E.
+      pose proof find_best_ok t m s H k H0.
+      destruct H2.
+      apply H2 in H1.
+      destruct (keq k0 k); congruence.
+  Qed.
 
   Theorem lookup_none : forall t m k,
-    ct_top t m -> map.get m k = None -> lookup t k = None.
-  Admitted.
+    ct_top t m -> valid_key k -> map.get m k = None -> lookup t k = None.
+    induction 1; intros; simpl.
+    - reflexivity.
+    - destruct (find_best t k) eqn:E.
+      pose proof find_best_ok t m s H k H0.
+      destruct H2.
+      destruct (keq k0 k); subst; try reflexivity.
+      apply H3 with (k' := k) in H1.
+      destruct (find_best t k). simpl in H1.
+      congruence.
+  Qed.
 
   Theorem lookup_ok : forall t m k r,
-    ct_top t m -> map.get m k = r -> lookup t k = r.
+    ct_top t m -> valid_key k -> map.get m k = r -> lookup t k = r.
   Proof.
     intros.
     destruct r.
@@ -222,10 +290,12 @@ Section Examples.
   Require Import coqutil.Tactics.Tactics.
   Require coqutil.Map.SortedList.
   Local Instance bitstring_strict_order: @SortedList.parameters.strict_order _ bitstring_ltb.
+  Proof.
   Admitted.
   Definition Build_parameters T := SortedList.parameters.Build_parameters bitstring T bitstring_ltb.
   Local Instance map T : map.map bitstring T := SortedList.map (Build_parameters T) bitstring_strict_order.
   Local Instance ok T : @Interface.map.ok bitstring T (map T).
+  Proof.
     pose proof @SortedList.map_ok (Build_parameters T) as H; eapply H.
   Qed.
 
