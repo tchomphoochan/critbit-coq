@@ -155,7 +155,67 @@ Section ct_definition.
   | ct_top_empty : ct_top Empty map.empty
   | ct_top_node : forall t m s, ct t s m -> ct_top (Node t) m.
 
-  (* indices are always increasing as you go down the tree *)
+  Definition prefixed (k p : bitstring) : Prop :=
+    exists n s, k ++ repeat false n = p ++ s.
+  Goal prefixed #[1 0 1] #[1 0 1 0 0]. Proof. exists 2, #[]. auto. Qed.
+  Goal ~ prefixed #[1 0 1] #[1 1]. Proof. intro; do 2 destruct H; discriminate. Qed.
+
+  Lemma prefixed_extend : forall k s t,
+    prefixed k (s ++ t) -> prefixed k s.
+  Proof.
+    intros.
+    destruct H as [n [s']].
+    unfold prefixed.
+    exists n, (t ++ s').
+    rewrite app_assoc. auto.
+  Qed.
+
+  Lemma prefixed_extend_invert : forall k s t,
+    ~ prefixed k s -> ~ prefixed k (s ++ t).
+  Proof.
+    intros. intro contra. apply H.
+    apply prefixed_extend with t. assumption.
+  Qed.
+
+  Lemma map_get_singleton_diff : forall k v sk,
+    k <> sk -> map.get (map_singleton k v) sk = None.
+  Proof.
+    intros. unfold map_singleton.
+    rewrite map.get_put_diff; auto.
+    apply map.get_empty.
+  Qed.
+
+  Lemma map_get_putmany_none : forall (ml mr : fmap) sk,
+    map.get ml sk = None -> map.get mr sk = None ->
+    map.get (map.putmany ml mr) sk = None.
+  Proof.
+    intros.
+    epose proof map.putmany_spec ml mr sk.
+    destruct H1.
+    - do 2 destruct H1. congruence.
+    - destruct H1. congruence.
+    Unshelve.
+  Admitted.
+
+  Lemma ct_map_prefix_wrong : forall t m s,
+    ct t s m ->
+    (forall k,
+      valid_key k ->
+      ~ prefixed k s ->
+      map.get m k = None).
+  Proof.
+    induction 1; subst; intros; simpl.
+    - apply map_get_singleton_diff.
+      intro contra; subst.
+      apply H1.
+      exists n, #[].
+      rewrite app_nil_r. auto.
+    - apply map_get_putmany_none.
+      + apply IHct1; auto.
+        apply prefixed_extend_invert; auto.
+      + apply IHct2; auto.
+        apply prefixed_extend_invert; auto.
+  Qed.
 
   (* sk stands for search key *)
   Fixpoint find_best (n: node) (sk: K) : K*V :=
@@ -165,6 +225,28 @@ Section ct_definition.
     | Leaf k v =>
         (k,v)
     end.
+
+  Lemma prefix_with_length: forall i k p,
+    i < length p -> ith k i <> ith p i -> ~ prefixed k p.
+  Proof.
+    induction i; intros; simpl; intro contra; destruct contra as [n [s]].
+    - unfold ith, nth_error, nth_default in *.
+      destruct k; destruct p; simpl in *.
+      + contradiction.
+      + induction n; simpl in *; congruence.
+      + lia.
+      + congruence.
+    - destruct p; simpl in *; try lia.
+      assert (i < length p) by lia.
+      destruct k; simpl in *.
+      + unfold ith, nth_default, nth_error at 1 in H0; simpl.
+  Admitted.
+
+  Lemma extract_ith : forall a b c,
+    ith (a ++ b :: c) (length a) = b.
+  Proof.
+    induction a; intros; simpl; eauto.
+  Qed.
 
   Lemma find_best_ok:  forall t m s,
     ct t s m -> 
@@ -181,11 +263,25 @@ Section ct_definition.
       + apply IHct2; auto. 
         cut (map.get ml k = None).
         * admit. (* should be a map lemma *)
-        * admit. (* need to relate to H somehow *)
+        * eapply ct_map_prefix_wrong; try eassumption.
+          rewrite app_assoc.
+          apply prefixed_extend_invert.
+          apply prefix_with_length with (i := length s).
+          -- rewrite app_length. simpl. lia.
+          -- intro contra.
+             rewrite extract_ith in contra.
+             congruence.
       + apply IHct1; auto.
         cut (map.get mr k = None).
         * admit.
-        * admit.
+        * eapply ct_map_prefix_wrong; try eassumption.
+          rewrite app_assoc.
+          apply prefixed_extend_invert.
+          apply prefix_with_length with (i := length s).
+          -- rewrite app_length. simpl. lia.
+          -- intro contra.
+             rewrite extract_ith in contra.
+             congruence.
     - eapply map.invert_get_putmany_None with
         (m1 := ml) (m2 := mr) in H2.
       destruct H2.
