@@ -1,6 +1,7 @@
 Require Import Arith Bool Coq.Lists.List Coq.micromega.Lia.
 Require Import coqutil.Map.Interface.
 Require Import coqutil.Map.Properties.
+Require Import coqutil.Decidable.
 
 Import ListNotations.
 Parameter TODO : forall {t:Type}, t.
@@ -12,7 +13,23 @@ Definition valid_key (s: bitstring) : Prop :=
   last s false = true.
 Definition ith (s: bitstring) (n: nat): bool :=
   nth_default false s n.
+
 Definition keq := @list_eq_dec bool bool_dec.
+
+Definition keq_bool (a b : K) :=
+  match (keq a b) with
+  | left _ => true
+  | right _ => false
+  end.
+
+Local Instance keq_spec: EqDecider keq_bool.
+Proof.
+  intros.
+  destruct (keq_bool x y) eqn: E; constructor; unfold keq_bool in *.
+  - destruct (keq x y); auto; try discriminate.
+  - destruct (keq x y); auto; try discriminate.
+Qed.
+
 Infix "<=?" := le_lt_dec.
 Definition bool_ltb (a b : bool) :=
   match a, b with
@@ -190,12 +207,11 @@ Section ct_definition.
     map.get (map.putmany ml mr) sk = None.
   Proof.
     intros.
-    epose proof map.putmany_spec ml mr sk.
+    pose proof map.putmany_spec ml mr sk.
     destruct H1.
     - do 2 destruct H1. congruence.
     - destruct H1. congruence.
-    Unshelve.
-  Admitted.
+  Qed.
 
   Lemma ct_map_prefix_wrong : forall t m s,
     ct t s m ->
@@ -226,6 +242,37 @@ Section ct_definition.
         (k,v)
     end.
 
+  Ltac inv H := inversion H; subst; clear H.
+
+  Lemma nth_default_step: forall {A:Type} (l:list A) i d a,
+    i > 0 -> nth_default d (a::l) i = nth_default d l (i-1).
+  Proof.
+    destruct i; try lia.
+    replace (S i - 1) with i by lia.
+    unfold nth_default. simpl. reflexivity.
+  Qed.
+
+  Lemma prefix_invert: forall p k,
+    prefixed k p -> forall i, i < length p -> ith k i = ith p i.
+  Proof.
+    induction p; intros; simpl in *; try lia.
+    unfold ith in *.
+    unfold prefixed in H.
+    destruct H as [n [s]].
+    simpl in H.
+    assert (a = false) by admit.
+    subst.
+    destruct i.
+    - unfold nth_default.
+      destruct k; auto; simpl.
+      simpl in H. inversion H. auto.
+    - destruct k; auto; simpl in *.
+      + rewrite nth_default_step by lia.
+        replace (S i - 1) with i by lia.
+        unfold nth_default at 1. simpl.
+        erewrite <- IHp with (k := #[0] ++ p); try lia.
+  Admitted.
+(* 
   Lemma prefix_with_length: forall i k p,
     i < length p -> ith k i <> ith p i -> ~ prefixed k p.
   Proof.
@@ -246,7 +293,7 @@ Section ct_definition.
     ith (a ++ b :: c) (length a) = b.
   Proof.
     induction a; intros; simpl; eauto.
-  Qed.
+  Qed.*)
 
   Lemma find_best_ok:  forall t m s,
     ct t s m -> 
@@ -262,34 +309,43 @@ Section ct_definition.
     - destruct (ith k (length s)) eqn:E.
       + apply IHct2; auto. 
         cut (map.get ml k = None).
-        * admit. (* should be a map lemma *)
+        * intros.
+          rewrite map.get_putmany_dec in H2.
+          destruct (map.get mr k); congruence.
         * eapply ct_map_prefix_wrong; try eassumption.
           rewrite app_assoc.
           apply prefixed_extend_invert.
-          apply prefix_with_length with (i := length s).
+          intro contra.
+          apply prefix_invert with (i := length s) in contra.
+          -- cut (ith (s ++ #[0]) (length s) = false); try congruence.
+            clear contra.
+            unfold ith.
+            rewrite List.hd_skipn_nth_default.
+            rewrite List.skipn_app_r; auto.
           -- rewrite app_length. simpl. lia.
-          -- intro contra.
-             rewrite extract_ith in contra.
-             congruence.
       + apply IHct1; auto.
         cut (map.get mr k = None).
-        * admit.
+        * intros.
+          rewrite map.get_putmany_dec in H2.
+          destruct (map.get mr k); congruence.
         * eapply ct_map_prefix_wrong; try eassumption.
           rewrite app_assoc.
           apply prefixed_extend_invert.
-          apply prefix_with_length with (i := length s).
+          intro contra.
+          apply prefix_invert with (i := length s) in contra.
+          -- cut (ith (s ++ #[1]) (length s) = true); try congruence.
+            clear contra.
+            unfold ith.
+            rewrite List.hd_skipn_nth_default.
+            rewrite List.skipn_app_r; auto.
           -- rewrite app_length. simpl. lia.
-          -- intro contra.
-             rewrite extract_ith in contra.
-             congruence.
     - eapply map.invert_get_putmany_None with
         (m1 := ml) (m2 := mr) in H2.
       destruct H2.
       destruct (ith k' (length s)) eqn:E.
       + apply IHct2; auto.
       + apply IHct1; auto.
-      Unshelve. all: admit.
-  Admitted.
+  Qed.
 
   Definition lookup (t: tree) (sk: K) : option V :=
     match t with
@@ -375,8 +431,20 @@ Section ct_definition.
     - eauto using lookup_none.
   Qed.
 
-  Theorem insert_ok : forall t m t' k v,
-    ct_top t m -> ct_top t' (map.put m k v).
+  (* Lemma find_best_ok:  forall t m s,
+    ct t s m -> 
+    (forall k, valid_key k ->
+      (forall v, map.get m k = Some v -> find_best t k = (k, v)) /\
+      (map.get m k = None -> forall k', fst (find_best t k') <> k)). *)
+
+  Lemma insert'_ok : forall n s m ik iv d,
+    ct n s m -> ct (insert' n ik iv d) s (map.put m ik iv).
+  Proof.
+    induction 1.
+  Admitted.
+
+  Theorem insert_ok : forall t m k v,
+    ct_top t m -> ct_top (insert t k v) (map.put m k v).
   Admitted.
 End ct_definition.
 
