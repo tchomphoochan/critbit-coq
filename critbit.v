@@ -10,7 +10,7 @@ Parameter TODO : forall {t:Type}, t.
 Definition bitstring := list bool.
 Definition K := bitstring.
 Definition valid_key (s: bitstring) : Prop :=
-  last s false = true.
+  last s true = true.
 Definition ith (s: bitstring) (n: nat): bool :=
   nth_default false s n.
 
@@ -252,48 +252,91 @@ Section ct_definition.
     unfold nth_default. simpl. reflexivity.
   Qed.
 
+  Inductive Prefixed : bitstring -> bitstring -> Prop :=
+  | empty_prefix : forall (k:bitstring), Prefixed k nil
+  | empty_key : forall (p:bitstring), Prefixed nil p -> Prefixed nil (false::p)
+  | cons_key : forall (k p:bitstring) (x:bool), Prefixed k p -> Prefixed (x::k) (x::p).
+  Local Hint Constructors Prefixed : core.
+  Goal Prefixed #[] #[]. auto. Qed.
+  Goal Prefixed #[] #[0 0 0]. auto. Qed.
+  Goal Prefixed #[1] #[1]. auto. Qed.
+  Goal Prefixed #[1] #[1 0]. auto. Qed.
+  Goal Prefixed #[0 1] #[0 1]. auto. Qed.
+  Goal Prefixed #[0] #[0]. auto. Qed.
+  Goal forall p, ~ Prefixed #[0] (true::p).
+  Proof.
+    cut (forall p k, k = #[0] -> ~ Prefixed #[0] (true::p)); eauto.
+    induction p; intros k H contra; inv contra.
+  Qed.
+
+  Lemma Prefixed_prefixed : forall (p k:bitstring),
+    Prefixed k p -> prefixed k p.
+  Proof.
+    unfold prefixed.
+    induction 1.
+    - exists 0. exists k. simpl. apply app_nil_r.
+    - destruct IHPrefixed as [n [s H0]].
+      simpl in *.
+      exists (S n), s. simpl.
+      f_equal. assumption.
+    - destruct IHPrefixed as [n [s H0]].
+      simpl in *.
+      exists n, s. simpl.
+      f_equal. assumption.
+  Qed.
+
+  Lemma prefixed_Prefixed : forall (p k:bitstring),
+    prefixed k p -> Prefixed k p.
+  Proof.
+    unfold prefixed. induction p; intros k H; eauto.
+    destruct H as [n [s H0]].
+    induction k; simpl in *.
+    - destruct n; simpl in *; try discriminate.
+      inv H0. eauto.
+    - destruct n; simpl in *.
+      + inv H0. constructor. apply IHp.
+        exists 0, s. assumption.
+      + inv H0. constructor. apply IHp.
+        exists (S n), s. auto.
+  Qed.
+
+  Lemma prefixed_iff_Prefixed : forall (p k: bitstring),
+    prefixed k p <-> Prefixed k p.
+  Proof.
+    split.
+    - apply prefixed_Prefixed.
+    - apply Prefixed_prefixed.
+  Qed.
+
+  Lemma Prefixed_invert: forall p k,
+    Prefixed k p -> forall i, i < length p -> ith k i = ith p i.
+  Proof.
+    induction 1; intros; simpl in *; try lia.
+    - destruct i; simpl in *; auto.
+      assert (i < length p) by lia; clear H0.
+      unfold ith. unfold nth_default. simpl.
+      unfold ith, nth_default in IHPrefixed.
+      rewrite <- IHPrefixed.
+      + induction i; eauto.
+      + auto.
+    - induction i; simpl; eauto.
+      unfold ith, nth_default in *; simpl in *.
+      apply IHPrefixed. lia.
+  Qed.
+
   Lemma prefix_invert: forall p k,
     prefixed k p -> forall i, i < length p -> ith k i = ith p i.
   Proof.
-    induction p; intros; simpl in *; try lia.
-    unfold ith in *.
-    unfold prefixed in H.
-    destruct H as [n [s]].
-    simpl in H.
-    assert (a = false) by admit.
-    subst.
-    destruct i.
-    - unfold nth_default.
-      destruct k; auto; simpl.
-      simpl in H. inversion H. auto.
-    - destruct k; auto; simpl in *.
-      + rewrite nth_default_step by lia.
-        replace (S i - 1) with i by lia.
-        unfold nth_default at 1. simpl.
-        erewrite <- IHp with (k := #[0] ++ p); try lia.
-  Admitted.
-(* 
-  Lemma prefix_with_length: forall i k p,
-    i < length p -> ith k i <> ith p i -> ~ prefixed k p.
-  Proof.
-    induction i; intros; simpl; intro contra; destruct contra as [n [s]].
-    - unfold ith, nth_error, nth_default in *.
-      destruct k; destruct p; simpl in *.
-      + contradiction.
-      + induction n; simpl in *; congruence.
-      + lia.
-      + congruence.
-    - destruct p; simpl in *; try lia.
-      assert (i < length p) by lia.
-      destruct k; simpl in *.
-      + unfold ith, nth_default, nth_error at 1 in H0; simpl.
-  Admitted.
+    intros.
+    apply prefixed_Prefixed in H.
+    apply Prefixed_invert; auto.
+  Qed.
 
   Lemma extract_ith : forall a b c,
     ith (a ++ b :: c) (length a) = b.
   Proof.
     induction a; intros; simpl; eauto.
-  Qed.*)
+  Qed.
 
   Lemma find_best_ok:  forall t m s,
     ct t s m -> 
