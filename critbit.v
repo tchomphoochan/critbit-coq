@@ -11,17 +11,16 @@ Definition bitstring := list bool.
 Definition K := bitstring.
 Definition valid_key (s: bitstring) : Prop :=
   last s true = true.
+(* Note: edge case, s=[] is a valid key. It represents #[0 0 0 0 ...] *)
 Definition ith (s: bitstring) (n: nat): bool :=
   nth_default false s n.
 
 Definition keq := @list_eq_dec bool bool_dec.
-
 Definition keq_bool (a b : K) :=
   match (keq a b) with
   | left _ => true
   | right _ => false
   end.
-
 Local Instance keq_spec: EqDecider keq_bool.
 Proof.
   intros.
@@ -154,6 +153,9 @@ Section ct_definition.
     | Node n => max_prefix' n
     end.
 
+  (* ct t s m : The tree t consists of nodes that are maximally prefixed by s.
+                This tree represents the key-value map m.
+                The keys in the key-value map use the canonical representation. *)
   Inductive ct : node -> K -> fmap -> Prop :=
   | ct_leaf :
       forall s s' v n,
@@ -401,7 +403,19 @@ Section ct_definition.
   Definition empty : tree := Empty.
   Definition singleton (ik: K) (iv: V) : tree := Node (Leaf ik iv).
 
+  Fixpoint replace' (n: node) (ik: K) (iv: V) : node :=
+    match n with
+    | Leaf k v => Leaf ik iv
+    | Internal idx l r =>
+        if ith ik idx
+        then Internal idx l (replace' r ik iv)
+        else Internal idx (replace' l ik iv) r
+    end.
+
   (* d stands for diff index *)
+  (* when d<?idx, you're inserting at the very top *)
+  (* when d>?idx, you're going down*)
+  (* d==idx, this should not happen unless you match*)
   Fixpoint insert' (n: node) (ik: K) (iv: V) (d: nat) : node :=
     match n with
     | Leaf k v =>
@@ -424,15 +438,15 @@ Section ct_definition.
 
   (* ik stands for insert key *)
   Definition insert (t: tree) (ik: K) (iv: V) : tree :=
-    match t with
-    | Empty => singleton ik iv
+    Node (match t with
+    | Empty => Leaf ik iv
     | Node n =>
         let (k,v) := find_best n ik in
-        match (diff k ik) with
-        | None => Node (Leaf ik iv)
-        | Some d => Node (insert' n ik iv d)
-        end
-    end.
+          match (diff k ik) with
+          | None => replace' n ik iv
+          | Some d => insert' n ik iv d
+          end
+    end).
   
   Theorem apply_empty :
     forall sk, lookup Empty sk = None.
@@ -474,16 +488,194 @@ Section ct_definition.
     - eauto using lookup_none.
   Qed.
 
-  (* Lemma find_best_ok:  forall t m s,
-    ct t s m -> 
-    (forall k, valid_key k ->
-      (forall v, map.get m k = Some v -> find_best t k = (k, v)) /\
-      (map.get m k = None -> forall k', fst (find_best t k') <> k)). *)
-
-  Lemma insert'_ok : forall n s m ik iv d,
-    ct n s m -> ct (insert' n ik iv d) s (map.put m ik iv).
+  Lemma diff_same_is_None : forall a b,
+    a = b -> diff a b = None.
   Proof.
-    induction 1.
+    intros. subst b.
+    induction a; auto.
+    simpl; destruct (eqb a a) eqn:E.
+    - rewrite IHa. simpl. auto.
+    - rewrite eqb_reflx in E. discriminate.
+  Qed.
+
+  Lemma valid_key_cons : forall a b,
+    valid_key (a :: b) -> valid_key b.
+  Proof.
+    intros.
+    unfold valid_key in *.
+    simpl in H.
+    destruct b; auto.
+  Qed.
+
+  Lemma option_map_none_inv : forall {A B:Type} (f:A ->B) x,
+    option_map f x = None -> x = None.
+  Proof.
+    unfold option_map; intros.
+    destruct x; easy.
+  Qed.
+
+  Lemma diff_empty_is_none : forall b,
+    diff #[] b = None ->
+    exists n, b = repeat false n.
+  Proof.
+    induction b; intros.
+    - exists 0; auto.
+    - simpl in *.
+      destruct a eqn:E.
+      + discriminate.
+      + apply option_map_none_inv in H.
+        pose proof (IHb H).
+        destruct H0.
+        exists (S x).
+        subst. auto.
+  Qed.
+
+  Lemma diff_empty_valid_is_none : forall b,
+    valid_key b ->
+    diff #[] b = None ->
+    b = #[].
+  Proof.
+    induction b; intros; auto.
+    destruct a eqn:E; try discriminate.
+    simpl in *.
+    pose proof (valid_key_cons _ _ H).
+    apply option_map_none_inv in H0.
+    pose proof (IHb H1 H0).
+    subst. discriminate.
+  Qed.
+
+  Lemma diff_None_is_same : forall a b,
+    diff a b = None ->
+    exists n m, a ++ repeat false n = b ++ repeat false m.
+  Proof.
+    induction a; intros.
+    - apply diff_empty_is_none in H. destruct H. subst.
+      exists x. exists 0. rewrite app_nil_r. auto.
+    - destruct a; simpl in *.
+      + destruct b; simpl in *; try discriminate.
+        destruct b; simpl in *; try discriminate.
+        apply option_map_none_inv in H.
+        apply IHa in H.
+        destruct H as [n [m]].
+        exists n, m. f_equal. auto.
+      + destruct b; simpl in *; try discriminate.
+        * apply option_map_none_inv in H.
+          apply IHa in H.
+          destruct H as [n [m]].
+          exists n, (S m). simpl. f_equal. auto.
+        * destruct b; try discriminate.
+          apply option_map_none_inv in H.
+          apply IHa in H.
+          destruct H as [n [m]].
+          exists n, m. simpl. f_equal. auto.
+  Qed.
+
+  Lemma repeat_same_length: forall {A:Type} n m (x:A),
+    repeat x n = repeat x m -> n = m.
+  Proof.
+    induction n; destruct m; intros; simpl; eauto; try discriminate.
+    simpl in H. inversion H.
+    f_equal. eauto.
+  Qed.
+
+  Lemma valid_key_has_true_somewhere : forall k,
+    valid_key k ->
+      k = #[] \/ exists k1 k2,
+        k = k1 ++ #[1] ++ k2 /\ valid_key k2.
+  Proof.
+    unfold valid_key.
+    induction k; intros; simpl; [left; reflexivity |].
+    simpl in H. destruct k eqn:E; subst; simpl.
+    - right. exists #[], #[]; easy.
+    - apply IHk in H. destruct H; try discriminate.
+      destruct H as [k1 [k2 [H1 H2]]].
+      right.
+      rewrite H1.
+      exists (a::k1), k2; easy.
+  Qed.
+
+  Lemma same_valid_keys : forall a b n m,
+    valid_key a -> valid_key b ->
+    a ++ repeat false n = b ++ repeat false m ->
+    a = b.
+  Proof.
+    induction a; intros.
+    - induction b; auto. exfalso.
+      pose proof (valid_key_cons _ _ H0).
+      specialize (IHb H2).
+      simpl in IHb.
+      simpl in H1.
+      destruct a eqn:Ea; subst.
+      + destruct n; simpl in *; discriminate.
+      + apply valid_key_has_true_somewhere in H2.
+        destruct H2; subst; try discriminate.
+        destruct H2 as [k1 [k2 [Hb1 Hb2]]]; subst.
+        destruct n; try easy; simpl in *.
+        inversion H1.
+        rewrite <- app_assoc in H3.
+        assert (nth (length k1) (repeat false n) false = false) by (apply nth_repeat).
+        rewrite H3 in H2.
+        admit.
+    - pose proof (valid_key_cons _ _ H).
+      simpl in H1.
+      specialize (IHa (a :: a0) n m H2 H).
+      simpl in *. rewrite IHa in H1.
+  Admitted.
+  
+  Lemma replace'_ok : forall n s m,
+    ct n s m ->
+    (forall ik, valid_key ik ->
+      diff (fst (find_best n ik)) ik = None ->
+      forall iv, ct (replace' n ik iv) s (map.put m ik iv)).
+  Proof.
+    induction 1; intros; subst; simpl.
+    - apply diff_None_is_same in H2.
+      destruct H2 as [n0 [m0]].
+      simpl in H0.
+      apply same_valid_keys in H0; subst; eauto.
+      unfold map_singleton.
+      rewrite map.put_put_same.
+      apply ct_leaf with (n := n); auto.
+    - simpl in H4.
+      apply diff_None_is_same in H4.
+      destruct H4 as [n0 [m0]].
+      destruct (ith ik (length s)) eqn:E.
+      + apply same_valid_keys in H1; eauto.
+        { eapply ct_internal; eauto.
+          - apply IHct2; auto.
+            rewrite H1. admit. (* trivial *)
+          - apply map.put_putmany_commute.
+        }
+        { admit. (* trivial *) }
+      + apply same_valid_keys in H1; eauto.
+        { eapply ct_internal; eauto.
+          - apply IHct1; auto.
+            rewrite H1. admit.  (*trivial *)
+          - admit. (*tricky*)
+        }
+        { admit. }
+  Admitted.
+
+  Lemma insert'_ok : forall n s m d,
+    ct n s m ->
+    (forall ik, valid_key ik ->
+      map.get m ik = None ->
+      Some d = diff (fst (find_best n ik)) ik ->
+      forall iv, ct (insert' n ik iv d) (firstn d s) (map.put m ik iv)).
+  Proof.
+    induction 1; subst; intros; simpl.
+    - destruct (ith ik d) eqn:E; subst.
+      + eapply ct_internal with
+          (xl := #[])
+          (* (xr := #[]) *)
+          (ml := map_singleton s v)
+          (mr := map_singleton ik iv).
+        * apply ct_leaf with (n := (S n)); simpl; auto.
+          rewrite repeat_cons.
+          rewrite app_assoc.
+          admit.
+        * econstructor; simpl; auto.
+          apply map_get_singleton_none in H1.
   Admitted.
 
   Theorem insert_ok : forall t m k v,
