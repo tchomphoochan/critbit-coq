@@ -127,12 +127,15 @@ Section ct_definition.
       | nil => None
       end
     end.
-  (* TODO: eliminate invalid keys *)
+  (* Comparison for invalid keys.
+     We should never really have to use `diff` for invalid keys, but if we do,
+     these are the expected results as we assume infinite zeros at the end. *)
   Goal diff [] [false;true;false] = Some 1. Proof. reflexivity. Qed.
   Goal diff [] [false] = None. Proof. reflexivity. Qed.
+  Goal diff [true] [true;false] = None. Proof. reflexivity. Qed.
+  (* Comparison for valid keys *)
   Goal diff [true;true] [true;true;true] = Some 2. Proof. reflexivity. Qed.
   Goal diff [true;false;true] [true;true;true] = Some 1. Proof. reflexivity. Qed.
-  Goal diff [true] [true;false] = None. Proof. reflexivity. Qed.
 
   Inductive node : Type :=
   | Leaf (k: K) (v: V)
@@ -153,7 +156,7 @@ Section ct_definition.
     | Node n => max_prefix' n
     end.
 
-  (* ct t s m : The tree t consists of nodes that are maximally prefixed by s.
+  (* ct t s m : The tree t consists of nodes that are prefixed by s.
                 This tree represents the key-value map m.
                 The keys in the key-value map use the canonical representation. *)
   Inductive ct : node -> K -> fmap -> Prop :=
