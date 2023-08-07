@@ -128,3 +128,29 @@ We chose to use a concrete map implementation rather than an abstract one, from 
 If anyone ever works on this, I highly suggest working through the existing proofs and seeing if you could come up with a way to clean them up. It was rather painful to make progress on `insert_ok` because of all the unnecessary tedium from bad design decisions, like using `repeat` function instead of `Repeated` predicate (which I defined much later in the process).
 
 This variant is probably fine as is, but as I said, it is not elegant. Perhaps an entirely new invariant may be justified. The entire thing about infinite zeros is very confusing. This refactoring is probably needed to make any meaningful progress on this. In the indefinite future, I might be able to get back to this project.
+
+### Wild idea for generalized crit-bit trees
+
+Here's the original plan before I abandoned the project: Once this implementation is finished, we move onto implementing more generalized crit-bit trees.
+
+The original crit-bit tree paper uses an array of bytes to represent the key, so indexing is done by using bit tricks. See `ref.c` for partial implementation.
+The QP trie uses a branching factor greater than two, because instead of looking at one bit at a time, it looks at some number of consecutive bits.
+
+These two implementations inspire me to consider the generalized version of crit-bit tree where the notion of a key is entirely abstract---I outlined this in `ref2.c`. A key is represented _somehow_ (as type `key_t`). Think of it as conceptually a list. Each internal node branches by some value in the key at index, represented somehow as `index_t`. The value at a key's index is called a `discriminee_t` (since it allows us to select which branch to go down). Essentially, we have this function:
+```c
+discrim_t get_ith_discrim(key_t k, index_t idx)
+```
+
+In Coq implementation, we can see that
+- `key_t` is the list of booleans (`list bool`), representing infinite list of zeros and ones.
+- `index_t` is simply an integer, denoting the crit-bit index.
+- `discriminee_t` is simply a bit (`bool`)
+
+In Adam Langley's notes, you can see that
+- `key_t` is a char array
+- `index_t` is `(byte index, bit index from 0-7)` (which essentially maps to a single integer)
+- `discriminee_t` is just a bit.
+
+In QP tries, let's say we do branching factor of `B=256` (branch by each byte). Then, one could define `index_t` to be a byte index, and `discriminee_t` to be a `char`.
+
+I'm not sure how useful this abstraction will be, but I reckon it will make it much easier to adapt Coq implementation to any underlying representation. This will be especially useful when someone tries to implement crit-bit tree in [mit-plv/bedrock2](https://github.com/mit-plv/bedrock2/tree/master/bedrock2), which will require a representation that's far more efficient than a linked list of booleans.
