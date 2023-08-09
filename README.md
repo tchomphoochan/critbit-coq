@@ -4,7 +4,7 @@ This is a formally verified Coq implementation of (very simplified) crit-bit tre
 
 ## Context
 
-This is an **UNCOMPLETED** project, which is a part of my (@tchomphoochan) UROP at MIT in Spring 2023. Unfortunately, because of changes in my priorities, I was not able to complete the implementation and verification. I am leaving the code base open sourced in case it may be useful to anyone (or if someone else ever continues the project). Below is an explanation of how things have been implemented so far. This project was supervised by @samuelgruetter.
+This is an **INCOMPLETE** project, which is a part of my (@tchomphoochan) UROP at MIT in Spring 2023. Unfortunately, because of changes in my priorities, I was not able to complete the implementation and verification. I am leaving the code base open sourced in case it may be useful to anyone (or if someone else ever continues the project). Below is an explanation of how things have been implemented so far. This project was supervised by @samuelgruetter.
 
 ## Quick summary of simplified crit-bit tree
 
